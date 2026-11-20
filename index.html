@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>نظام توصيل المياه</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Tahoma, Arial, sans-serif; margin: 0; background: #f0f6fb; color: #1a2b3c; font-size: 16px; }
+  header { background: #1565a6; color: #fff; padding: 12px 16px; }
+  header h1 { margin: 0 0 8px; font-size: 20px; }
+  nav button { background: #fff; color: #1565a6; border: none; padding: 8px 14px; margin-left: 6px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+  nav button.active { background: #0d3d66; color: #fff; }
+  main { padding: 16px; max-width: 900px; margin: auto; }
+  h2 { color: #0d3d66; font-size: 18px; border-bottom: 2px solid #b9d7ee; padding-bottom: 4px; margin-top: 24px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+  label { display: block; font-size: 14px; margin-bottom: 4px; }
+  input, select { width: 100%; padding: 10px; border: 1px solid #8aa9c4; border-radius: 8px; font-size: 16px; font-family: inherit; background: #fff; }
+  button, .btn { background: #1565a6; color: #fff; border: none; padding: 10px 14px; border-radius: 8px; font-size: 15px; cursor: pointer; text-decoration: none; display: inline-block; margin: 4px 2px; font-family: inherit; }
+  button.danger { background: #b03a2e; }
+  .btns { margin-top: 6px; }
+  #map { height: 300px; border-radius: 10px; margin-top: 12px; }
+  .item, .card { background: #fff; border-radius: 10px; padding: 12px; margin: 10px 0; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card.st-way { border-right: 6px solid #e0a100; }
+  .card.st-done { border-right: 6px solid #2e7d32; opacity: .75; }
+  .card.st-failed { border-right: 6px solid #b03a2e; }
+  .card.st-new { border-right: 6px solid #1565a6; }
+  .note { background: #fff7d6; padding: 6px; border-radius: 6px; }
+  .hidden { display: none; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  .row > * { flex: 1; min-width: 150px; }
+  .hint { font-size: 13px; color: #555; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>نظام توصيل المياه</h1>
+  <nav>
+    <button id="btn-office" class="active" onclick="showTab('office')">المكتب</button>
+    <button id="btn-driver" onclick="showTab('driver')">السائق</button>
+    <button id="btn-settings" onclick="showTab('settings')">الإعدادات</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ===== صفحة المكتب ===== -->
+<section id="tab-office">
+  <h2 id="c_formTitle">عميل جديد</h2>
+  <input type="hidden" id="c_editId">
+  <div class="grid">
+    <div><label>اسم العميل</label><input id="c_name"></div>
+    <div><label>رقم الجوال (05xxxxxxxx)</label><input id="c_phone" type="tel"></div>
+    <div><label>المدينة</label><input id="c_city"></div>
+    <div><label>الحي</label><input id="c_district"></div>
+    <div><label>الشارع</label><input id="c_street"></div>
+    <div><label>رقم المبنى أو الفيلا</label><input id="c_building"></div>
+    <div><label>علامة مميزة قريبة</label><input id="c_landmark"></div>
+    <div><label>الكمية (لتر)</label><input id="c_liters" type="number" min="0"></div>
+    <div><label>عدد العبوات</label><input id="c_bottles" type="number" min="0"></div>
+    <div><label>دورة التوصيل</label>
+      <select id="c_frequency">
+        <option value="0">حسب الطلب</option>
+        <option value="7">أسبوعي</option>
+        <option value="14">كل أسبوعين</option>
+        <option value="30">شهري</option>
+      </select>
+    </div>
+    <div><label>حالة الدفع</label>
+      <select id="c_paid">
+        <option value="unpaid">غير مدفوع</option>
+        <option value="paid">مدفوع</option>
+        <option value="cod">عند التسليم</option>
+      </select>
+    </div>
+    <div><label>ملاحظات</label><input id="c_notes"></div>
+  </div>
+
+  <div class="row">
+    <button onclick="locateMe()">تحديد موقعي الحالي</button>
+    <span id="coordsText" class="hint">لم يتم تحديد الموقع بعد. اضغط على الخريطة لتحديد البيت.</span>
+  </div>
+  <div id="map"></div>
+
+  <div class="btns">
+    <button onclick="saveCustomer()">حفظ العميل</button>
+    <button class="danger" onclick="clearForm()">مسح النموذج</button>
+  </div>
+
+  <h2>قائمة العملاء</h2>
+  <input id="c_search" placeholder="بحث بالاسم أو الجوال أو الحي" oninput="renderCustomers()">
+  <div id="c_list"></div>
+
+  <h2>طلبات التوصيل</h2>
+  <div class="row">
+    <div><label>العميل</label><select id="o_customer"></select></div>
+    <div><label>تاريخ التوصيل</label><input id="o_date" type="date" onchange="renderOrders()"></div>
+    <div><button onclick="addOrder()">إضافة طلب</button></div>
+  </div>
+  <div id="o_list"></div>
+</section>
+
+<!-- ===== صفحة السائق ===== -->
+<section id="tab-driver" class="hidden">
+  <h2>جولة اليوم</h2>
+  <div class="row">
+    <div><label>التاريخ</label><input id="d_date" type="date" onchange="renderDriver()"></div>
+    <div><button onclick="locateDriver()">ترتيب الجولة من موقعي</button></div>
+  </div>
+  <p class="hint">يرتب النظام التوصيلات تقريباً حسب أقصر مسار، ابتداءً من موقعك الحالي.</p>
+  <div id="d_list"></div>
+</section>
+
+<!-- ===== الإعدادات ===== -->
+<section id="tab-settings" class="hidden">
+  <h2>المزامنة عبر Google Sheets</h2>
+  <p class="hint">الصق هنا رابط Apps Script (Web App) متبوعاً بالرمز، مثل: https://script.google.com/macros/s/XXXX/exec?token=رمزك. إذا تركته فارغاً يعمل التطبيق على هذا الجهاز فقط.</p>
+  <input id="syncUrl" placeholder="الصق رابط Apps Script هنا">
+  <div class="btns">
+    <button onclick="saveSyncUrl()">حفظ الرابط</button>
+    <button onclick="pullCloud()">سحب البيانات من السحابة</button>
+  </div>
+  <p class="hint">ملاحظة: عند تعديل البيانات تُرفع تلقائياً إلى السحابة. إذا عدّل جهازان في وقت واحد، تكون آخر نسخة مرفوعة هي الأحدث.</p>
+</section>
+
+</main>
+
+<script>
+const KEY = 'water_db_v1';
+let db = JSON.parse(localStorage.getItem(KEY) || '{"customers":[],"orders":[]}');
+let driverPos = null, map = null, marker = null, pickedLat = null, pickedLng = null;
+
+const STATUS = { new: 'جديد', way: 'في الطريق', done: 'تم التسليم', failed: 'تعذر التسليم' };
+const PAY = { unpaid: 'غير مدفوع', paid: 'مدفوع', cod: 'عند التسليم' };
+const FREQ = { 0: 'حسب الطلب', 7: 'أسبوعي', 14: 'كل أسبوعين', 30: 'شهري' };
+const CUSTOMER_TEXT_FIELDS = ['name', 'phone', 'city', 'district', 'street', 'building', 'landmark', 'liters', 'bottles', 'notes'];
+
+function $(id) { return document.getElementById(id); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function getC(id) { return db.customers.find(c => c.id === id); }
+function todayStr() { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); }
+function addDays(s, n) { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
+
+function persist() {
+  localStorage.setItem(KEY, JSON.stringify(db));
+  pushCloud();
+}
+
+function normPhone(p) {
+  p = (p || '').replace(/[\s-]/g, '');
+  if (/^05\d{8}$/.test(p)) return '+966' + p.slice(1);
+  if (/^\+9665\d{8}$/.test(p)) return p;
+  return null;
+}
+
+function showTab(name) {
+  ['office', 'driver', 'settings'].forEach(t => {
+    $('tab-' + t).classList.toggle('hidden', t !== name);
+    $('btn-' + t).classList.toggle('active', t === name);
+  });
+  if (name === 'office') {
+    initMap();
+    setTimeout(() => map.invalidateSize(), 100);
+    renderCustomers();
+    renderCustomerSelect();
+    renderOrders();
+  }
+  if (name === 'driver') renderDriver();
+  if (name === 'settings') $('syncUrl').value = localStorage.getItem('sync_url') || '';
+}
+
+/* ===== الخريطة والموقع ===== */
+function initMap() {
+  if (map) return;
+  map = L.map('map').setView([24.7136, 46.6753], 11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+  map.on('click', e => setPoint(e.latlng.lat, e.latlng.lng));
+}
+
+function setPoint(lat, lng) {
+  pickedLat = lat;
+  pickedLng = lng;
+  if (marker) marker.setLatLng([lat, lng]);
+  else marker = L.marker([lat, lng]).addTo(map);
+  $('coordsText').textContent = `الإحداثيات: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+}
+
+function locateMe() {
+  if (!navigator.geolocation) return alert('المتصفح لا يدعم تحديد الموقع');
+  navigator.geolocation.getCurrentPosition(p => {
+    setPoint(p.coords.latitude, p.coords.longitude);
+    map.setView([p.coords.latitude, p.coords.longitude], 16);
+  }, () => alert('تعذر تحديد الموقع، اضغط على الخريطة يدوياً'), { enableHighAccuracy: true });
+}
+
+/* ===== العملاء ===== */
+function saveCustomer() {
+  const name = $('c_name').value.trim();
+  const phone = normPhone($('c_phone').value);
+  if (!name) return alert('اكتب اسم العميل');
+  if (!phone) return alert('رقم الجوال غير صحيح. مثال: 0512345678');
+  if (pickedLat === null) return alert('حدد موقع العميل على الخريطة أو بزر تحديد موقعي');
+
+  const data = {
+    name, phone,
+    city: $('c_city').value.trim(),
+    district: $('c_district').value.trim(),
+    street: $('c_street').value.trim(),
+    building: $('c_building').value.trim(),
+    landmark: $('c_landmark').value.trim(),
+    lat: pickedLat, lng: pickedLng,
+    liters: Number($('c_liters').value) || 0,
+    bottles: Number($('c_bottles').value) || 0,
+    frequency: Number($('c_frequency').value) || 0,
+    notes: $('c_notes').value.trim(),
+    paid: $('c_paid').value
+  };
+
+  const editId = $('c_editId').value;
+  if (editId) Object.assign(getC(editId), data);
+  else db.customers.push({ id: uid(), ...data });
+
+  persist();
+  clearForm();
+  renderCustomers();
+  renderCustomerSelect();
+}
+
+function clearForm() {
+  CUSTOMER_TEXT_FIELDS.forEach(f => $('c_' + f).value = '');
+  $('c_frequency').value = '0';
+  $('c_paid').value = 'unpaid';
+  $('c_editId').value = '';
+  $('c_formTitle').textContent = 'عميل جديد';
+  pickedLat = null;
+  pickedLng = null;
+  if (marker) { marker.remove(); marker = null; }
+  $('coordsText').textContent = 'لم يتم تحديد الموقع بعد. اضغط على الخريطة لتحديد البيت.';
+}
+
+function editCustomer(id) {
+  const c = getC(id);
+  CUSTOMER_TEXT_FIELDS.forEach(f => $('c_' + f).value = c[f] ?? '');
+  $('c_frequency').value = c.frequency;
+  $('c_paid').value = c.paid;
+  $('c_editId').value = id;
+  $('c_formTitle').textContent = 'تعديل بيانات العميل';
+  setPoint(c.lat, c.lng);
+  map.setView([c.lat, c.lng], 16);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function delCustomer(id) {
+  if (!confirm('حذف هذا العميل وكل طلباته؟')) return;
+  db.customers = db.customers.filter(c => c.id !== id);
+  db.orders = db.orders.filter(o => o.customerId !== id);
+  persist();
+  renderCustomers();
+  renderCustomerSelect();
+  renderOrders();
+}
+
+function renderCustomers() {
+  const q = ($('c_search').value || '').trim();
+  const list = db.customers.filter(c => !q || [c.name, c.phone, c.district].some(v => String(v).includes(q)));
+  $('c_list').innerHTML = list.length ? list.map(c => `
+    <div class="item">
+      <b>${esc(c.name)}</b> - ${esc(c.phone)}<br>
+      ${esc(c.district)} - ${esc(c.street)}<br>
+      ${c.liters} لتر | الدورة: ${FREQ[c.frequency]} | ${PAY[c.paid]}<br>
+      <button onclick="editCustomer('${c.id}')">تعديل</button>
+      <button class="danger" onclick="delCustomer('${c.id}')">حذف</button>
+    </div>`).join('') : '<p>لا يوجد عملاء مطابقون.</p>';
+}
+
+/* ===== طلبات التوصيل (المكتب) ===== */
+function renderCustomerSelect() {
+  $('o_customer').innerHTML = db.customers.map(c =>
+    `<option value="${c.id}">${esc(c.name)} - ${esc(c.district)}</option>`).join('');
+  if (!$('o_date').value) $('o_date').value = todayStr();
+}
+
+function addOrder() {
+  const cid = $('o_customer').value;
+  const date = $('o_date').value;
+  if (!cid || !date) return alert('أضف عميلاً أولاً ثم اختر التاريخ');
+  if (db.orders.some(o => o.customerId === cid && o.date === date)) return alert('يوجد طلب لهذا العميل في هذا التاريخ');
+  db.orders.push({ id: uid(), customerId: cid, date, status: 'new', reason: '' });
+  persist();
+  renderOrders();
+}
+
+function delOrder(id) {
+  db.orders = db.orders.filter(o => o.id !== id);
+  persist();
+  renderOrders();
+}
+
+function renderOrders() {
+  const date = $('o_date').value || todayStr();
+  const list = db.orders.filter(o => o.date === date);
+  $('o_list').innerHTML = list.length ? list.map(o => {
+    const c = getC(o.customerId);
+    if (!c) return '';
+    return `<div class="item"><b>${esc(c.name)}</b> - ${esc(c.phone)} - ${c.liters} لتر<br>
+      الحالة: ${STATUS[o.status]}${o.reason ? ' (' + esc(o.reason) + ')' : ''}<br>
+      <button class="danger" onclick="delOrder('${o.id}')">حذف الطلب</button></div>`;
+  }).join('') : '<p>لا توجد طلبات لهذا التاريخ.</p>';
+}
+
+/* ===== صفحة السائق ===== */
+function locateDriver() {
+  navigator.geolocation.getCurrentPosition(p => {
+    driverPos = { lat: p.coords.latitude, lng: p.coords.longitude };
+    renderDriver();
+  }, () => alert('تعذر تحديد موقع السائق'), { enableHighAccuracy: true });
+}
+
+// المسافة بين نقطتين بمعادلة Haversine (بالكيلومترات)
+function dist(a, b) {
+  const R = 6371, rad = x => x * Math.PI / 180;
+  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// ترتيب أقرب جار: من موقع السائق ثم الأقرب فالأقرب
+function routeOrder(items) {
+  const left = items.filter(i => i.customer);
+  const route = [];
+  let cur = driverPos;
+  if (!cur && left.length) {
+    const first = left.shift();
+    route.push(first);
+    cur = { lat: first.customer.lat, lng: first.customer.lng };
+  }
+  while (left.length) {
+    let best = 0, bd = Infinity;
+    left.forEach((it, i) => { const d = dist(cur, it.customer); if (d < bd) { bd = d; best = i; } });
+    const it = left.splice(best, 1)[0];
+    it.km = bd;
+    route.push(it);
+    cur = { lat: it.customer.lat, lng: it.customer.lng };
+  }
+  return route;
+}
+
+function renderDriver() {
+  const date = $('d_date').value || todayStr();
+  $('d_date').value = date;
+  const items = db.orders.filter(o => o.date === date).map(o => ({ order: o, customer: getC(o.customerId) }));
+  const route = routeOrder(items);
+  const pending = route.filter(i => i.order.status !== 'done');
+  const liters = pending.reduce((s, i) => s + (i.customer.liters || 0), 0);
+
+  $('d_list').innerHTML = route.length
+    ? `<p><b>المتبقي:</b> ${pending.length} توصيلة، ${liters} لتر</p>` + route.map((it, idx) => {
+      const c = it.customer, o = it.order;
+      const addr = [c.district, c.street, c.building].filter(Boolean).join(' - ');
+      const wa = 'https://wa.me/' + c.phone.replace('+', '') + '?text=' + encodeURIComponent('وصلنا لعنوانك خلال دقائق، شكراً لك');
+      const gm = `https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}`;
+      const waze = `https://waze.com/ul?ll=${c.lat},${c.lng}&navigate=yes`;
+      return `<div class="card st-${o.status}">
+        <h3>${idx + 1}. ${esc(c.name)} ${it.km !== undefined ? `<small>(${it.km.toFixed(1)} كم)</small>` : ''}</h3>
+        <p>${esc(addr)}</p>
+        <p>علامة مميزة: ${esc(c.landmark) || '-'}</p>
+        <p>الكمية: ${c.liters} لتر (${c.bottles} عبوة) | الدفع: ${PAY[c.paid]}</p>
+        ${c.notes ? `<p class="note">ملاحظة: ${esc(c.notes)}</p>` : ''}
+        <p>الحالة: <b>${STATUS[o.status]}</b></p>
+        <div class="btns">
+          <a class="btn" href="tel:${c.phone}">اتصال</a>
+          <a class="btn" href="${gm}" target="_blank">خرائط Google</a>
+          <a class="btn" href="${waze}" target="_blank">Waze</a>
+          <a class="btn" href="${wa}" target="_blank">واتساب</a>
+        </div>
+        <div class="btns">
+          <button onclick="setStatus('${o.id}','way')">في الطريق</button>
+          <button onclick="setStatus('${o.id}','done')">تم التسليم</button>
+          <button class="danger" onclick="setStatus('${o.id}','failed')">تعذر</button>
+        </div>
+      </div>`;
+    }).join('')
+    : '<p>لا توجد توصيلات لهذا اليوم.</p>';
+}
+
+function setStatus(id, st) {
+  const o = db.orders.find(x => x.id === id);
+  const c = getC(o.customerId);
+  if (st === 'failed') o.reason = prompt('سبب التعذر؟') || '';
+  o.status = st;
+  // في الدورات المتكررة يُنشأ الطلب التالي تلقائياً
+  if (st === 'done' && c && c.frequency > 0) {
+    const nd = addDays(o.date, c.frequency);
+    if (!db.orders.some(x => x.customerId === c.id && x.date === nd))
+      db.orders.push({ id: uid(), customerId: c.id, date: nd, status: 'new', reason: '' });
+  }
+  persist();
+  renderDriver();
+}
+
+/* ===== المزامنة مع Google Sheets ===== */
+function saveSyncUrl() {
+  localStorage.setItem('sync_url', $('syncUrl').value.trim());
+  alert('تم حفظ الرابط');
+}
+
+function pushCloud() {
+  const url = localStorage.getItem('sync_url');
+  if (!url) return;
+  fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(db) }).catch(() => {});
+}
+
+async function pullCloud() {
+  const url = localStorage.getItem('sync_url');
+  if (!url) return alert('أدخل رابط المزامنة أولاً');
+  try {
+    const r = await fetch(url);
+    const data = await r.json();
+    if (!Array.isArray(data.customers)) throw new Error('bad data');
+    db = data;
+    localStorage.setItem(KEY, JSON.stringify(db));
+    alert('تم السحب من السحابة');
+    location.reload();
+  } catch (e) {
+    alert('تعذر السحب من السحابة. تحقق من الرابط والرمز.');
+  }
+}
+
+/* ===== البدء ===== */
+$('o_date').value = todayStr();
+$('d_date').value = todayStr();
+showTab('office');
+</script>
+</body>
+</html>

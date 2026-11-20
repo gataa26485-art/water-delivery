@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>طلب مياه - نظام توصيل</title>
+<style>
+  body { font-family: Tahoma, Arial, sans-serif; background: #f0f6fb; padding: 20px; }
+  main { max-width: 500px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; }
+  h2 { color: #0d3d66; }
+  input, select { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
+  button { background: #1565a6; color: #fff; border: none; padding: 10px; width: 100%; border-radius: 5px; cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <h2>طلب توصيل مياه</h2>
+  <label>رقم الجوال المسجل</label>
+  <input id="o_phone" type="tel" placeholder="05xxxxxxxx">
+  <button onclick="checkCustomer()">بحث عن بياناتي</button>
+  <div id="o_details" style="display:none; margin-top:20px;">
+    <p>أهلاً بك: <span id="u_name"></span></p>
+    <label>الكمية (لتر)</label>
+    <input id="o_liters" type="number">
+    <button onclick="sendOrder()">إرسال الطلب للمكتب</button>
+  </div>
+</main>
+<script>
+function checkCustomer() {
+  const p = document.getElementById('o_phone').value;
+  const db = JSON.parse(localStorage.getItem('water_db_v1') || '{"customers":[]}');
+  const c = db.customers.find(x => x.phone.includes(p.slice(-9)));
+  if (c) {
+    document.getElementById('u_name').textContent = c.name;
+    document.getElementById('o_details').style.display = 'block';
+  } else alert('لم يتم العثور على عميل بهذا الرقم');
+}
+function sendOrder() {
+  alert('تم إرسال طلبك! سيتم اعتماده من قبل المكتب.');
+}
+</script>
+</body>
+</html>
