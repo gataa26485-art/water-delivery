@@ -6,37 +6,99 @@
 <title>طلب مياه - نظام توصيل</title>
 <style>
   body { font-family: Tahoma, Arial, sans-serif; background: #f0f6fb; padding: 20px; }
-  main { max-width: 500px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; }
+  main { max-width: 500px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
   h2 { color: #0d3d66; }
-  input, select { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
-  button { background: #1565a6; color: #fff; border: none; padding: 10px; width: 100%; border-radius: 5px; cursor: pointer; }
+  input, select { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; }
+  button { background: #1565a6; color: #fff; border: none; padding: 12px; width: 100%; border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 10px; }
 </style>
 </head>
-<body>
-<main>
+<body onload="checkAccess()">
+<main id="app-content" style="display:none;">
   <h2>طلب توصيل مياه</h2>
+  <p style="color:#555;">بإدارة: محمود بدران</p>
   <label>رقم الجوال المسجل</label>
   <input id="o_phone" type="tel" placeholder="05xxxxxxxx">
   <button onclick="checkCustomer()">بحث عن بياناتي</button>
+
   <div id="o_details" style="display:none; margin-top:20px;">
-    <p>أهلاً بك: <span id="u_name"></span></p>
+    <p>أهلاً بك: <b id="u_name"></b></p>
     <label>الكمية (لتر)</label>
-    <input id="o_liters" type="number">
+    <input id="o_liters" type="number" placeholder="مثال: 19">
+    <label>ملاحظات إضافية</label>
+    <input id="o_notes" placeholder="ملاحظات للسائق">
     <button onclick="sendOrder()">إرسال الطلب للمكتب</button>
   </div>
 </main>
 <script>
-function checkCustomer() {
-  const p = document.getElementById('o_phone').value;
-  const db = JSON.parse(localStorage.getItem('water_db_v1') || '{"customers":[]}');
-  const c = db.customers.find(x => x.phone.includes(p.slice(-9)));
-  if (c) {
-    document.getElementById('u_name').textContent = c.name;
-    document.getElementById('o_details').style.display = 'block';
-  } else alert('لم يتم العثور على عميل بهذا الرقم');
+// نسخ دالة التحقق من الهاتف الموحدة
+function normPhone(p) {
+  p = p.replace(/\s+/g, '').replace(/-/g, '');
+  if (/^05\d{8}$/.test(p)) return '+966' + p.slice(1);
+  if (/^5\d{8}$/.test(p)) return '+966' + p;
+  if (/^\+9665\d{8}$/.test(p)) return p;
+  if (/^9665\d{8}$/.test(p)) return '+' + p;
+  return null;
 }
+
+// دالة المزامنة للسحابة
+function pushCloud() {
+  const url = localStorage.getItem('sync_url');
+  const db = JSON.parse(localStorage.getItem('water_db_v1') || '{"customers":[],"orders":[]}');
+  if (!url) return;
+  fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(db) }).catch(() => {});
+}
+
+let foundCustomer = null;
+
+function checkCustomer() {
+  const p = normPhone(document.getElementById('o_phone').value);
+  if (!p) return alert('رقم الجوال غير صحيح');
+
+  const db = JSON.parse(localStorage.getItem('water_db_v1') || '{"customers":[],"orders":[]}');
+  foundCustomer = db.customers.find(x => x.phone === p);
+
+  if (foundCustomer) {
+    document.getElementById('u_name').textContent = foundCustomer.name;
+    document.getElementById('o_details').style.display = 'block';
+  } else alert('لم يتم العثور على عميل بهذا الرقم المسجل في المكتب.');
+}
+
 function sendOrder() {
-  alert('تم إرسال طلبك! سيتم اعتماده من قبل المكتب.');
+  const liters = document.getElementById('o_liters').value;
+  if (!liters) return alert('الرجاء تحديد الكمية');
+
+  let db = JSON.parse(localStorage.getItem('water_db_v1') || '{"customers":[],"orders":[]}');
+
+  // إضافة الطلب
+  const newOrder = {
+    id: Date.now().toString(36),
+    customerId: foundCustomer.id,
+    date: new Date().toISOString().slice(0, 10),
+    status: 'new',
+    reason: ''
+  };
+
+  db.orders.push(newOrder);
+  localStorage.setItem('water_db_v1', JSON.stringify(db));
+
+  // مزامنة السحابة
+  pushCloud();
+
+  alert('تم إرسال طلبك للمكتب بنجاح!');
+  location.reload();
+}
+
+/* ===== الحماية بكلمة السر ===== */
+function checkAccess() {
+  const savedPin = localStorage.getItem('app_pin') || 'nokia190749';
+
+  const enteredPin = prompt("أدخل كلمة سر النظام:");
+  if (enteredPin === savedPin) {
+      document.getElementById('app-content').style.display = 'block';
+  } else {
+      alert('كلمة سر خاطئة!');
+      location.reload();
+  }
 }
 </script>
 </body>

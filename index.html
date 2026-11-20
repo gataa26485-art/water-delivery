@@ -35,10 +35,11 @@
   .hint { font-size: 13px; color: #555; }
 </style>
 </head>
-<body>
+<body onload="checkAccess()">
 
 <header>
   <h1>نظام توصيل المياه</h1>
+  <p style="margin:0; font-size:14px; opacity:0.9;">بإدارة: محمود بدران</p>
   <nav>
     <button id="btn-office" class="active" onclick="showTab('office')">المكتب</button>
     <button id="btn-driver" onclick="showTab('driver')">السائق</button>
@@ -46,7 +47,7 @@
   </nav>
 </header>
 
-<main>
+<main id="app-content" style="display:none;">
 
 <!-- ===== صفحة المكتب ===== -->
 <section id="tab-office">
@@ -123,6 +124,7 @@
   <div class="btns">
     <button onclick="saveSyncUrl()">حفظ الرابط</button>
     <button onclick="pullCloud()">سحب البيانات من السحابة</button>
+    <button onclick="changePin()">تغيير كلمة السر</button>
   </div>
   <p class="hint">ملاحظة: عند تعديل البيانات تُرفع تلقائياً إلى السحابة. إذا عدّل جهازان في وقت واحد، تكون آخر نسخة مرفوعة هي الأحدث.</p>
 </section>
@@ -152,9 +154,11 @@ function persist() {
 }
 
 function normPhone(p) {
-  p = (p || '').replace(/[\s-]/g, '');
+  p = p.replace(/\s+/g, '').replace(/-/g, '');
   if (/^05\d{8}$/.test(p)) return '+966' + p.slice(1);
+  if (/^5\d{8}$/.test(p)) return '+966' + p;
   if (/^\+9665\d{8}$/.test(p)) return p;
+  if (/^9665\d{8}$/.test(p)) return '+' + p;
   return null;
 }
 
@@ -431,10 +435,35 @@ async function pullCloud() {
   }
 }
 
-/* ===== البدء ===== */
-$('o_date').value = todayStr();
-$('d_date').value = todayStr();
-showTab('office');
+/* ===== الحماية بكلمة السر ===== */
+function checkAccess() {
+  // تعيين الرمز الافتراضي عند أول تشغيل إذا لم يكن موجوداً
+  if (!localStorage.getItem('app_pin')) {
+      localStorage.setItem('app_pin', 'nokia190749');
+  }
+
+  const savedPin = localStorage.getItem('app_pin');
+  const enteredPin = prompt("أدخل كلمة سر النظام:");
+  if (enteredPin === savedPin) {
+      $('app-content').style.display = 'block';
+  } else {
+      alert('كلمة سر خاطئة!');
+      location.reload();
+  }
+}
+
+function changePin() {
+    const oldPin = prompt("أدخل كلمة السر الحالية:");
+    if (oldPin === localStorage.getItem('app_pin')) {
+        const newPin = prompt("أدخل كلمة السر الجديدة:");
+        if (newPin) {
+            localStorage.setItem('app_pin', newPin);
+            alert('تم تغيير كلمة السر');
+        }
+    } else {
+        alert('كلمة السر الحالية خاطئة');
+    }
+}
 </script>
 </body>
 </html>
