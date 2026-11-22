@@ -17,6 +17,14 @@ create table if not exists public.order_requests (
   created_at timestamptz not null default now()
 );
 
+alter table public.order_requests
+  add column if not exists latitude double precision
+  constraint order_requests_latitude_check check (latitude is null or (latitude between -90 and 90));
+
+alter table public.order_requests
+  add column if not exists longitude double precision
+  constraint order_requests_longitude_check check (longitude is null or (longitude between -180 and 180));
+
 create table if not exists public.admin_users (
   user_id uuid primary key references auth.users (id) on delete cascade
 );
@@ -71,7 +79,7 @@ create policy "Admins can verify their own membership"
   using (user_id = auth.uid());
 
 revoke all on public.order_requests from anon, authenticated;
-grant insert (customer_name, phone, city, district, street, building, liters, notes)
+grant insert (customer_name, phone, city, district, street, building, liters, notes, latitude, longitude)
   on public.order_requests to anon, authenticated;
 grant select on public.order_requests to authenticated;
 grant update (status) on public.order_requests to authenticated;

@@ -705,7 +705,7 @@ async function loadRemoteOrders() {
   container.textContent = 'جارٍ تحميل طلبات العملاء...';
   try {
     const result = await adminBackendFetch(
-      '/rest/v1/order_requests?select=id,customer_name,phone,city,district,street,building,liters,notes,status,created_at&order=created_at.desc&limit=100',
+      '/rest/v1/order_requests?select=id,customer_name,phone,city,district,street,building,liters,notes,latitude,longitude,status,created_at&order=created_at.desc&limit=100',
       {}
     );
     if (!Array.isArray(result)) throw new Error('Unexpected order response');
@@ -729,10 +729,14 @@ function renderRemoteOrders() {
     const options = Object.keys(REMOTE_ORDER_STATUSES).map(status =>
       `<option value="${status}"${status === order.status ? ' selected' : ''}>${REMOTE_ORDER_STATUSES[status]}</option>`
     ).join('');
+    const location = Number.isFinite(Number(order.latitude)) && Number.isFinite(Number(order.longitude))
+      ? `<p><a href="https://www.google.com/maps?q=${encodeURIComponent(order.latitude)},${encodeURIComponent(order.longitude)}" target="_blank" rel="noopener noreferrer">فتح موقع العميل على الخريطة</a></p>`
+      : '<p>لم يُرسل موقع للعميل.</p>';
     return `<article class="item request-card" data-status="${esc(order.status)}">
       <h3>${esc(order.customer_name)} - ${esc(order.phone)}</h3>
       <p>${esc(address)}</p>
       <p>الكمية: ${Number(order.liters) || 0} لتر${order.notes ? ` | ملاحظات: ${esc(order.notes)}` : ''}</p>
+      ${location}
       <p>الحالة: ${esc(REMOTE_ORDER_STATUSES[order.status] || 'غير معروفة')} ${createdText ? `| ${esc(createdText)}` : ''}</p>
       <div class="row">
         <select data-action="remote-status" aria-label="حالة الطلب">${options}</select>
