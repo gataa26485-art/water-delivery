@@ -75,7 +75,7 @@
     <button type="submit">دخول</button>
   </form>
   <p id="loginStatus" class="hint" role="status" aria-live="polite"></p>
-  <p class="hint">أكمل إعداد Supabase باستخدام <a href="./supabase-setup.sql" target="_blank" rel="noopener noreferrer">ملف إعداد قاعدة البيانات</a>، ثم عدّل <code>backend-config.js</code> بقيمة Project URL ومفتاح anon/public فقط.</p>
+  <p id="backendSetupHint" class="hint">أكمل إعداد Supabase باستخدام <a href="./supabase-setup.sql" target="_blank" rel="noopener noreferrer">ملف إعداد قاعدة البيانات</a>، ثم عدّل <code>backend-config.js</code> بقيمة Project URL ومفتاح anon/public فقط.</p>
 </section>
 
 <main id="app-content" style="display:none;">
@@ -635,6 +635,7 @@ async function assertAdmin(token) {
 
 async function initializeApp() {
   const configured = window.waterBackendConfig && window.waterBackendConfig();
+  $('backendSetupHint').hidden = Boolean(configured);
   $('backendStatus').textContent = configured
     ? 'إعداد Supabase موجود. تُحكم صلاحيات العرض والتعديل بسياسات قاعدة البيانات.'
     : 'لم يُضف إعداد Supabase بعد؛ استقبال الطلبات متاح مؤقتاً عبر WhatsApp.';
