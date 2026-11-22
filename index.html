@@ -4,8 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>نظام توصيل المياه</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<meta name="theme-color" content="#1565a6">
+<link rel="manifest" href="./manifest.json">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
+<script src="./backend-config.js"></script>
 <style>
   * { box-sizing: border-box; }
   body { font-family: Tahoma, Arial, sans-serif; margin: 0; background: #f0f6fb; color: #1a2b3c; font-size: 16px; }
@@ -33,36 +36,73 @@
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
   .row > * { flex: 1; min-width: 150px; }
   .hint { font-size: 13px; color: #555; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 16px; }
+  .stat { background: #fff; padding: 12px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .stat strong { display: block; color: #1565a6; font-size: 22px; }
+  .file-input { display: none; }
+  #admin-login { max-width: 500px; margin: 24px auto; padding: 18px; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+  #admin-login input { margin-bottom: 12px; }
+  .request-card { border-right: 5px solid #1565a6; }
+  .request-card[data-status="delivered"] { border-color: #2e7d32; }
+  .request-card[data-status="cancelled"] { border-color: #b03a2e; }
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #e0a100; outline-offset: 2px; }
+  @media (max-width: 600px) { main { padding: 12px; } header nav button { margin-top: 8px; } }
 </style>
 </head>
-<body onload="checkAccess()">
+<body onload="initializeApp()">
 
 <header>
   <h1>نظام توصيل المياه</h1>
-  <p style="margin:0; font-size:14px; opacity:0.9;">بإدارة: محمود بدران</p>
+  <p style="margin:0; font-size:14px; opacity:0.9;">بإدارة الحاج محمود بدران</p>
   <nav>
+    <a class="btn" href="./order.html">طلب مياه</a>
+    <a class="btn" href="https://wa.me/966567596361" target="_blank" rel="noopener noreferrer">تواصل عبر WhatsApp</a>
     <button id="btn-office" class="active" onclick="showTab('office')">المكتب</button>
     <button id="btn-driver" onclick="showTab('driver')">السائق</button>
     <button id="btn-settings" onclick="showTab('settings')">الإعدادات</button>
+    <button id="logoutButton" class="hidden" onclick="logoutAdmin()">تسجيل الخروج</button>
   </nav>
 </header>
+
+<section id="admin-login">
+  <h2>دخول الإدارة</h2>
+  <p class="hint">يسجل دخول الإدارة عبر Supabase. أنشئ حساب المدير وكلمة مروره الجديدة من لوحة Supabase؛ لا تستخدم كلمة مرور داخل ملفات الموقع.</p>
+  <form id="adminLoginForm">
+    <label for="adminEmail">البريد الإلكتروني</label>
+    <input id="adminEmail" type="email" autocomplete="username" required>
+    <label for="adminPassword">كلمة المرور</label>
+    <input id="adminPassword" type="password" autocomplete="current-password" required>
+    <button type="submit">دخول</button>
+  </form>
+  <p id="loginStatus" class="hint" role="status" aria-live="polite"></p>
+  <p class="hint">أكمل إعداد Supabase باستخدام <a href="./supabase-setup.sql" target="_blank" rel="noopener noreferrer">ملف إعداد قاعدة البيانات</a>، ثم عدّل <code>backend-config.js</code> بقيمة Project URL ومفتاح anon/public فقط.</p>
+</section>
 
 <main id="app-content" style="display:none;">
 
 <!-- ===== صفحة المكتب ===== -->
 <section id="tab-office">
+  <div class="stats" aria-live="polite">
+    <div class="stat">العملاء<strong id="stat-customers">0</strong></div>
+    <div class="stat">توصيلات اليوم<strong id="stat-today">0</strong></div>
+    <div class="stat">المتبقي اليوم<strong id="stat-pending">0</strong></div>
+  </div>
+  <h2>طلبات العملاء عبر الموقع</h2>
+  <p class="hint">الطلبات المحفوظة في الخادم لا تظهر إلا لحساب الإدارة المصرح به.</p>
+  <button onclick="loadRemoteOrders()">تحديث الطلبات</button>
+  <div id="remoteOrders" aria-live="polite"></div>
   <h2 id="c_formTitle">عميل جديد</h2>
   <input type="hidden" id="c_editId">
   <div class="grid">
-    <div><label>اسم العميل</label><input id="c_name"></div>
-    <div><label>رقم الجوال (05xxxxxxxx)</label><input id="c_phone" type="tel"></div>
-    <div><label>المدينة</label><input id="c_city"></div>
-    <div><label>الحي</label><input id="c_district"></div>
-    <div><label>الشارع</label><input id="c_street"></div>
-    <div><label>رقم المبنى أو الفيلا</label><input id="c_building"></div>
-    <div><label>علامة مميزة قريبة</label><input id="c_landmark"></div>
-    <div><label>الكمية (لتر)</label><input id="c_liters" type="number" min="0"></div>
-    <div><label>عدد العبوات</label><input id="c_bottles" type="number" min="0"></div>
+    <div><label>اسم العميل</label><input id="c_name" maxlength="120"></div>
+    <div><label>رقم الجوال (05xxxxxxxx)</label><input id="c_phone" type="tel" maxlength="20"></div>
+    <div><label>المدينة</label><input id="c_city" maxlength="200"></div>
+    <div><label>الحي</label><input id="c_district" maxlength="200"></div>
+    <div><label>الشارع</label><input id="c_street" maxlength="200"></div>
+    <div><label>رقم المبنى أو الفيلا</label><input id="c_building" maxlength="200"></div>
+    <div><label>علامة مميزة قريبة</label><input id="c_landmark" maxlength="200"></div>
+    <div><label>الكمية (لتر)</label><input id="c_liters" type="number" min="0" max="5000" step="1"></div>
+    <div><label>عدد العبوات</label><input id="c_bottles" type="number" min="0" max="500" step="1"></div>
     <div><label>دورة التوصيل</label>
       <select id="c_frequency">
         <option value="0">حسب الطلب</option>
@@ -78,12 +118,16 @@
         <option value="cod">عند التسليم</option>
       </select>
     </div>
-    <div><label>ملاحظات</label><input id="c_notes"></div>
+    <div><label>ملاحظات</label><input id="c_notes" maxlength="500"></div>
   </div>
 
   <div class="row">
     <button onclick="locateMe()">تحديد موقعي الحالي</button>
     <span id="coordsText" class="hint">لم يتم تحديد الموقع بعد. اضغط على الخريطة لتحديد البيت.</span>
+  </div>
+  <div class="grid">
+    <div><label for="c_lat">خط العرض (Latitude)</label><input id="c_lat" type="number" min="-90" max="90" step="any" inputmode="decimal"></div>
+    <div><label for="c_lng">خط الطول (Longitude)</label><input id="c_lng" type="number" min="-180" max="180" step="any" inputmode="decimal"></div>
   </div>
   <div id="map"></div>
 
@@ -118,22 +162,47 @@
 
 <!-- ===== الإعدادات ===== -->
 <section id="tab-settings" class="hidden">
-  <h2>المزامنة عبر Google Sheets</h2>
-  <p class="hint">الصق هنا رابط Apps Script (Web App) متبوعاً بالرمز، مثل: https://script.google.com/macros/s/XXXX/exec?token=رمزك. إذا تركته فارغاً يعمل التطبيق على هذا الجهاز فقط.</p>
-  <input id="syncUrl" placeholder="الصق رابط Apps Script هنا">
+  <h2>استقبال الطلبات الآمن</h2>
+  <p id="backendStatus" class="hint" role="status" aria-live="polite">يتم فحص إعداد الخدمة الخلفية...</p>
+  <p class="hint">يستخدم العملاء نموذج الطلب العام، وتُحفظ الطلبات في Supabase. لا تضع service_role key أو كلمة مرور في هذا المشروع؛ المفتاح anon/public فقط، وسياسات قاعدة البيانات هي التي تمنح الصلاحيات.</p>
+  <p class="hint">الإرسال العام يسمح بطلبات مجهولة مع قيود قاعدة البيانات؛ أضف CAPTCHA أو تحديد معدل عبر خدمة خلفية قبل إطلاق واسع لتقليل الرسائل المزعجة.</p>
+  <a class="btn" href="./order.html">معاينة نموذج العميل</a>
   <div class="btns">
-    <button onclick="saveSyncUrl()">حفظ الرابط</button>
-    <button onclick="pullCloud()">سحب البيانات من السحابة</button>
-    <button onclick="changePin()">تغيير كلمة السر</button>
+    <button onclick="loadRemoteOrders()">تحديث الطلبات من الخادم</button>
+    <button onclick="logoutAdmin()">تسجيل الخروج</button>
+    <button onclick="exportBackup()">تصدير نسخة احتياطية</button>
+    <button id="exportRecoveryButton" hidden onclick="exportRecoveryBackup()">تصدير بيانات الاسترداد</button>
+    <button onclick="$('backupFile').click()">استعادة نسخة احتياطية</button>
+    <input id="backupFile" class="file-input" type="file" accept="application/json,.json" onchange="importBackup(event)">
   </div>
-  <p class="hint">ملاحظة: عند تعديل البيانات تُرفع تلقائياً إلى السحابة. إذا عدّل جهازان في وقت واحد، تكون آخر نسخة مرفوعة هي الأحدث.</p>
+  <p id="syncStatus" class="hint" role="status" aria-live="polite">البيانات المحلية محفوظة على هذا الجهاز فقط.</p>
+  <p class="hint">بيانات العملاء المحليون الحالية لا تنتقل تلقائياً إلى الخادم؛ الطلبات الجديدة عبر النموذج فقط هي المشتركة بين الأجهزة. بيانات العملاء والجولات القديمة تبقى محلية.</p>
 </section>
 
 </main>
 
 <script>
 const KEY = 'water_db_v1';
-let db = JSON.parse(localStorage.getItem(KEY) || '{"customers":[],"orders":[]}');
+function loadDb() {
+  const raw = localStorage.getItem(KEY);
+  if (!raw) return { customers: [], orders: [] };
+  try {
+    const data = JSON.parse(raw);
+    if (!validDatabase(data)) throw new Error('Invalid database shape');
+    return data;
+  } catch (error) {
+    let backupSaved = true;
+    try { localStorage.setItem('water_db_recovery_backup', raw); } catch (storageError) { backupSaved = false; }
+    const recoveryButton = document.getElementById('exportRecoveryButton');
+    if (recoveryButton) recoveryButton.hidden = !backupSaved;
+    alert(backupSaved
+      ? 'تعذر قراءة بياناتك المحفوظة. احتُفظ بنسخة للاستعادة في هذا المتصفح، ولم تُستبدل البيانات.'
+      : 'تعذر قراءة البيانات وحفظ نسخة استردادها. لا تحفظ بيانات جديدة حتى تستعيد نسخة احتياطية خارجية.');
+    return { customers: [], orders: [] };
+  }
+}
+let db = { customers: [], orders: [] };
+let dbLoaded = false;
 let driverPos = null, map = null, marker = null, pickedLat = null, pickedLng = null;
 
 const STATUS = { new: 'جديد', way: 'في الطريق', done: 'تم التسليم', failed: 'تعذر التسليم' };
@@ -145,12 +214,56 @@ function $(id) { return document.getElementById(id); }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function getC(id) { return db.customers.find(c => c.id === id); }
+function validDatabase(data) {
+  if (!data || !Array.isArray(data.customers) || !Array.isArray(data.orders)) return false;
+  const customers = new Set();
+  const phoneNumbers = new Set();
+  const orders = new Set();
+  const customerDates = new Set();
+  for (const c of data.customers) {
+    if (!c || typeof c.id !== 'string' || !c.id || typeof c.name !== 'string' || typeof c.phone !== 'string' ||
+        c.name.trim().length === 0 || c.name.length > 120 || normPhone(c.phone) !== c.phone ||
+        !Number.isFinite(Number(c.lat)) || !Number.isFinite(Number(c.lng)) ||
+        Number(c.lat) < -90 || Number(c.lat) > 90 || Number(c.lng) < -180 || Number(c.lng) > 180 ||
+        (c.liters !== undefined && (!Number.isFinite(Number(c.liters)) || Number(c.liters) < 0 || Number(c.liters) > 5000)) ||
+        (c.bottles !== undefined && (!Number.isFinite(Number(c.bottles)) || Number(c.bottles) < 0 || Number(c.bottles) > 500)) ||
+        (c.frequency !== undefined && ![0, 7, 14, 30].includes(Number(c.frequency))) ||
+        (c.paid !== undefined && !['unpaid', 'paid', 'cod'].includes(c.paid))) return false;
+    for (const field of ['city', 'district', 'street', 'building', 'landmark', 'notes']) {
+      if (c[field] !== undefined && (typeof c[field] !== 'string' || c[field].length > (field === 'notes' ? 500 : 200))) return false;
+    }
+    if (customers.has(c.id) || phoneNumbers.has(c.phone)) return false;
+    customers.add(c.id);
+    phoneNumbers.add(c.phone);
+  }
+  return data.orders.every(o => {
+    const customerDate = o && `${o.customerId}:${o.date}`;
+    if (!o || typeof o.id !== 'string' || !o.id || orders.has(o.id) || typeof o.customerId !== 'string' ||
+        !customers.has(o.customerId) || !/^\d{4}-\d{2}-\d{2}$/.test(o.date) ||
+        Number.isNaN(Date.parse(o.date + 'T00:00:00')) ||
+        new Date(o.date + 'T00:00:00Z').toISOString().slice(0, 10) !== o.date ||
+        customerDates.has(customerDate) ||
+        ['new', 'way', 'done', 'failed'].indexOf(o.status) < 0 ||
+        (o.liters !== undefined && (!Number.isFinite(Number(o.liters)) || Number(o.liters) < 0 || Number(o.liters) > 5000)) ||
+        (o.notes !== undefined && (typeof o.notes !== 'string' || o.notes.length > 500)) ||
+        (o.reason !== undefined && (typeof o.reason !== 'string' || o.reason.length > 500))) return false;
+    orders.add(o.id);
+    customerDates.add(customerDate);
+    return true;
+  });
+}
 function todayStr() { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); }
-function addDays(s, n) { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
+function addDays(s, n) { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
 
 function persist() {
-  localStorage.setItem(KEY, JSON.stringify(db));
-  pushCloud();
+  try {
+    localStorage.setItem(KEY, JSON.stringify(db));
+  } catch (error) {
+    alert('تعذر حفظ البيانات محلياً. قد تكون مساحة التخزين ممتلئة؛ صدّر نسخة احتياطية قبل المتابعة.');
+    return false;
+  }
+  renderStats();
+  return true;
 }
 
 function normPhone(p) {
@@ -169,36 +282,56 @@ function showTab(name) {
   });
   if (name === 'office') {
     initMap();
-    setTimeout(() => map.invalidateSize(), 100);
+    if (map) setTimeout(() => map.invalidateSize(), 100);
     renderCustomers();
     renderCustomerSelect();
     renderOrders();
   }
   if (name === 'driver') renderDriver();
-  if (name === 'settings') $('syncUrl').value = localStorage.getItem('sync_url') || '';
+  if (name === 'settings') $('backendStatus').textContent = window.waterBackendConfig && window.waterBackendConfig()
+    ? 'إعداد Supabase موجود. تُحكم صلاحيات العرض والتعديل بسياسات قاعدة البيانات.'
+    : 'لم يُضف عنوان Supabase والمفتاح العام بعد؛ يمكن للعميل استخدام WhatsApp مؤقتاً.';
+}
+
+function renderStats() {
+  if (!$('stat-customers')) return;
+  const todayOrders = db.orders.filter(o => o.date === todayStr());
+  $('stat-customers').textContent = db.customers.length;
+  $('stat-today').textContent = todayOrders.length;
+  $('stat-pending').textContent = todayOrders.filter(o => o.status !== 'done').length;
 }
 
 /* ===== الخريطة والموقع ===== */
 function initMap() {
   if (map) return;
+  if (!window.L) {
+    $('coordsText').textContent = 'الخريطة غير متاحة حالياً. تحقق من اتصال الإنترنت ثم أعد تحميل الصفحة.';
+    return;
+  }
   map = L.map('map').setView([24.7136, 46.6753], 11);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
   map.on('click', e => setPoint(e.latlng.lat, e.latlng.lng));
 }
 
 function setPoint(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180)
+    return alert('الإحداثيات غير صحيحة.');
   pickedLat = lat;
   pickedLng = lng;
+  $('c_lat').value = lat;
+  $('c_lng').value = lng;
+  $('coordsText').textContent = `الإحداثيات: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  if (!map) initMap();
+  if (!map) return;
   if (marker) marker.setLatLng([lat, lng]);
   else marker = L.marker([lat, lng]).addTo(map);
-  $('coordsText').textContent = `الإحداثيات: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 }
 
 function locateMe() {
   if (!navigator.geolocation) return alert('المتصفح لا يدعم تحديد الموقع');
   navigator.geolocation.getCurrentPosition(p => {
     setPoint(p.coords.latitude, p.coords.longitude);
-    map.setView([p.coords.latitude, p.coords.longitude], 16);
+    if (map) map.setView([p.coords.latitude, p.coords.longitude], 16);
   }, () => alert('تعذر تحديد الموقع، اضغط على الخريطة يدوياً'), { enableHighAccuracy: true });
 }
 
@@ -206,9 +339,22 @@ function locateMe() {
 function saveCustomer() {
   const name = $('c_name').value.trim();
   const phone = normPhone($('c_phone').value);
+  const lat = $('c_lat').value.trim() ? Number($('c_lat').value) : pickedLat;
+  const lng = $('c_lng').value.trim() ? Number($('c_lng').value) : pickedLng;
   if (!name) return alert('اكتب اسم العميل');
   if (!phone) return alert('رقم الجوال غير صحيح. مثال: 0512345678');
-  if (pickedLat === null) return alert('حدد موقع العميل على الخريطة أو بزر تحديد موقعي');
+  if (lat === null || lng === null) return alert('حدد الموقع على الخريطة أو أدخل الإحداثيات يدوياً.');
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180)
+    return alert('الإحداثيات غير صحيحة.');
+  if (name.length > 120 || $('c_notes').value.length > 500 ||
+      ['city', 'district', 'street', 'building', 'landmark'].some(field => $('c_' + field).value.length > 200))
+    return alert('تجاوز أحد الحقول الحد المسموح به.');
+  const liters = Number($('c_liters').value) || 0;
+  const bottles = Number($('c_bottles').value) || 0;
+  if (!Number.isFinite(liters) || liters < 0 || liters > 5000 || !Number.isInteger(liters))
+    return alert('أدخل كمية صحيحة بين 0 و5000 لتر');
+  if (!Number.isFinite(bottles) || bottles < 0 || bottles > 500 || !Number.isInteger(bottles))
+    return alert('أدخل عدد عبوات صحيحاً بين 0 و500');
 
   const data = {
     name, phone,
@@ -217,19 +363,26 @@ function saveCustomer() {
     street: $('c_street').value.trim(),
     building: $('c_building').value.trim(),
     landmark: $('c_landmark').value.trim(),
-    lat: pickedLat, lng: pickedLng,
-    liters: Number($('c_liters').value) || 0,
-    bottles: Number($('c_bottles').value) || 0,
+    lat, lng,
+    liters,
+    bottles,
     frequency: Number($('c_frequency').value) || 0,
     notes: $('c_notes').value.trim(),
     paid: $('c_paid').value
   };
 
   const editId = $('c_editId').value;
-  if (editId) Object.assign(getC(editId), data);
-  else db.customers.push({ id: uid(), ...data });
+  if (editId) {
+    const customer = getC(editId);
+    if (!customer) return alert('تعذر العثور على العميل للتعديل. حدّث الصفحة وحاول مجدداً.');
+    if (db.customers.some(c => c.id !== editId && c.phone === phone)) return alert('رقم الجوال مسجل لعميل آخر.');
+    Object.assign(customer, data);
+  } else {
+    if (db.customers.some(c => c.phone === phone)) return alert('رقم الجوال مسجل مسبقاً.');
+    db.customers.push({ id: uid(), ...data });
+  }
 
-  persist();
+  if (!persist()) return;
   clearForm();
   renderCustomers();
   renderCustomerSelect();
@@ -243,19 +396,22 @@ function clearForm() {
   $('c_formTitle').textContent = 'عميل جديد';
   pickedLat = null;
   pickedLng = null;
+  $('c_lat').value = '';
+  $('c_lng').value = '';
   if (marker) { marker.remove(); marker = null; }
   $('coordsText').textContent = 'لم يتم تحديد الموقع بعد. اضغط على الخريطة لتحديد البيت.';
 }
 
 function editCustomer(id) {
   const c = getC(id);
+  if (!c) return alert('تعذر العثور على العميل.');
   CUSTOMER_TEXT_FIELDS.forEach(f => $('c_' + f).value = c[f] ?? '');
-  $('c_frequency').value = c.frequency;
-  $('c_paid').value = c.paid;
+  $('c_frequency').value = c.frequency ?? 0;
+  $('c_paid').value = c.paid || 'unpaid';
   $('c_editId').value = id;
   $('c_formTitle').textContent = 'تعديل بيانات العميل';
   setPoint(c.lat, c.lng);
-  map.setView([c.lat, c.lng], 16);
+  if (map) map.setView([c.lat, c.lng], 16);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -276,16 +432,16 @@ function renderCustomers() {
     <div class="item">
       <b>${esc(c.name)}</b> - ${esc(c.phone)}<br>
       ${esc(c.district)} - ${esc(c.street)}<br>
-      ${c.liters} لتر | الدورة: ${FREQ[c.frequency]} | ${PAY[c.paid]}<br>
-      <button onclick="editCustomer('${c.id}')">تعديل</button>
-      <button class="danger" onclick="delCustomer('${c.id}')">حذف</button>
+      ${Number(c.liters) || 0} لتر | الدورة: ${FREQ[c.frequency] || FREQ[0]} | ${PAY[c.paid] || PAY.unpaid}<br>
+      <button data-action="edit-customer" data-id="${esc(c.id)}">تعديل</button>
+      <button class="danger" data-action="delete-customer" data-id="${esc(c.id)}">حذف</button>
     </div>`).join('') : '<p>لا يوجد عملاء مطابقون.</p>';
 }
 
 /* ===== طلبات التوصيل (المكتب) ===== */
 function renderCustomerSelect() {
   $('o_customer').innerHTML = db.customers.map(c =>
-    `<option value="${c.id}">${esc(c.name)} - ${esc(c.district)}</option>`).join('');
+    `<option value="${esc(c.id)}">${esc(c.name)} - ${esc(c.district)}</option>`).join('');
   if (!$('o_date').value) $('o_date').value = todayStr();
 }
 
@@ -294,7 +450,9 @@ function addOrder() {
   const date = $('o_date').value;
   if (!cid || !date) return alert('أضف عميلاً أولاً ثم اختر التاريخ');
   if (db.orders.some(o => o.customerId === cid && o.date === date)) return alert('يوجد طلب لهذا العميل في هذا التاريخ');
-  db.orders.push({ id: uid(), customerId: cid, date, status: 'new', reason: '' });
+  const customer = getC(cid);
+  if (!customer) return alert('تعذر العثور على العميل المحدد.');
+  db.orders.push({ id: uid(), customerId: cid, date, liters: customer.liters || 0, notes: '', status: 'new', reason: '' });
   persist();
   renderOrders();
 }
@@ -311,9 +469,10 @@ function renderOrders() {
   $('o_list').innerHTML = list.length ? list.map(o => {
     const c = getC(o.customerId);
     if (!c) return '';
-    return `<div class="item"><b>${esc(c.name)}</b> - ${esc(c.phone)} - ${c.liters} لتر<br>
+    return `<div class="item"><b>${esc(c.name)}</b> - ${esc(c.phone)} - ${o.liters ?? c.liters} لتر<br>
+      ${o.notes ? `ملاحظات الطلب: ${esc(o.notes)}<br>` : ''}
       الحالة: ${STATUS[o.status]}${o.reason ? ' (' + esc(o.reason) + ')' : ''}<br>
-      <button class="danger" onclick="delOrder('${o.id}')">حذف الطلب</button></div>`;
+      <button class="danger" data-action="delete-order" data-id="${esc(o.id)}">حذف الطلب</button></div>`;
   }).join('') : '<p>لا توجد طلبات لهذا التاريخ.</p>';
 }
 
@@ -335,7 +494,9 @@ function dist(a, b) {
 
 // ترتيب أقرب جار: من موقع السائق ثم الأقرب فالأقرب
 function routeOrder(items) {
-  const left = items.filter(i => i.customer);
+  const left = items.filter(i => i.customer && Number.isFinite(Number(i.customer.lat)) &&
+    Number.isFinite(Number(i.customer.lng)) && Number(i.customer.lat) >= -90 &&
+    Number(i.customer.lat) <= 90 && Number(i.customer.lng) >= -180 && Number(i.customer.lng) <= 180);
   const route = [];
   let cur = driverPos;
   if (!cur && left.length) {
@@ -360,32 +521,34 @@ function renderDriver() {
   const items = db.orders.filter(o => o.date === date).map(o => ({ order: o, customer: getC(o.customerId) }));
   const route = routeOrder(items);
   const pending = route.filter(i => i.order.status !== 'done');
-  const liters = pending.reduce((s, i) => s + (i.customer.liters || 0), 0);
+  const liters = pending.reduce((s, i) => s + (Number(i.order.liters ?? i.customer.liters) || 0), 0);
 
   $('d_list').innerHTML = route.length
     ? `<p><b>المتبقي:</b> ${pending.length} توصيلة، ${liters} لتر</p>` + route.map((it, idx) => {
       const c = it.customer, o = it.order;
+      if (!c) return '';
       const addr = [c.district, c.street, c.building].filter(Boolean).join(' - ');
       const wa = 'https://wa.me/' + c.phone.replace('+', '') + '?text=' + encodeURIComponent('وصلنا لعنوانك خلال دقائق، شكراً لك');
       const gm = `https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}`;
       const waze = `https://waze.com/ul?ll=${c.lat},${c.lng}&navigate=yes`;
-      return `<div class="card st-${o.status}">
+      return `<div class="card st-${esc(STATUS[o.status] ? o.status : 'new')}">
         <h3>${idx + 1}. ${esc(c.name)} ${it.km !== undefined ? `<small>(${it.km.toFixed(1)} كم)</small>` : ''}</h3>
         <p>${esc(addr)}</p>
         <p>علامة مميزة: ${esc(c.landmark) || '-'}</p>
-        <p>الكمية: ${c.liters} لتر (${c.bottles} عبوة) | الدفع: ${PAY[c.paid]}</p>
+        <p>الكمية: ${Number(o.liters ?? c.liters) || 0} لتر (${Number(c.bottles) || 0} عبوة) | الدفع: ${esc(PAY[c.paid] || 'غير محدد')}</p>
+        ${o.notes ? `<p class="note">ملاحظات الطلب: ${esc(o.notes)}</p>` : ''}
         ${c.notes ? `<p class="note">ملاحظة: ${esc(c.notes)}</p>` : ''}
-        <p>الحالة: <b>${STATUS[o.status]}</b></p>
+        <p>الحالة: <b>${esc(STATUS[o.status] || STATUS.new)}</b></p>
         <div class="btns">
-          <a class="btn" href="tel:${c.phone}">اتصال</a>
-          <a class="btn" href="${gm}" target="_blank">خرائط Google</a>
-          <a class="btn" href="${waze}" target="_blank">Waze</a>
-          <a class="btn" href="${wa}" target="_blank">واتساب</a>
+          <a class="btn" href="tel:${esc(c.phone)}">اتصال</a>
+          <a class="btn" href="${esc(gm)}" target="_blank" rel="noopener noreferrer">خرائط Google</a>
+          <a class="btn" href="${esc(waze)}" target="_blank" rel="noopener noreferrer">Waze</a>
+          <a class="btn" href="${esc(wa)}" target="_blank" rel="noopener noreferrer">واتساب</a>
         </div>
         <div class="btns">
-          <button onclick="setStatus('${o.id}','way')">في الطريق</button>
-          <button onclick="setStatus('${o.id}','done')">تم التسليم</button>
-          <button class="danger" onclick="setStatus('${o.id}','failed')">تعذر</button>
+          <button data-action="set-order-status" data-id="${esc(o.id)}" data-status="way">في الطريق</button>
+          <button data-action="set-order-status" data-id="${esc(o.id)}" data-status="done">تم التسليم</button>
+          <button class="danger" data-action="set-order-status" data-id="${esc(o.id)}" data-status="failed">تعذر</button>
         </div>
       </div>`;
     }).join('')
@@ -394,8 +557,13 @@ function renderDriver() {
 
 function setStatus(id, st) {
   const o = db.orders.find(x => x.id === id);
+  if (!o || !['way', 'done', 'failed'].includes(st)) return alert('تعذر تحديث حالة الطلب.');
   const c = getC(o.customerId);
-  if (st === 'failed') o.reason = prompt('سبب التعذر؟') || '';
+  if (st === 'failed') {
+    const reason = prompt('سبب التعذر؟');
+    if (reason === null) return;
+    o.reason = reason.slice(0, 500);
+  }
   o.status = st;
   // في الدورات المتكررة يُنشأ الطلب التالي تلقائياً
   if (st === 'done' && c && c.frequency > 0) {
@@ -407,62 +575,273 @@ function setStatus(id, st) {
   renderDriver();
 }
 
-/* ===== المزامنة مع Google Sheets ===== */
-function saveSyncUrl() {
-  localStorage.setItem('sync_url', $('syncUrl').value.trim());
-  alert('تم حفظ الرابط');
+function setSyncStatus(message) {
+  const status = $('syncStatus');
+  if (status) status.textContent = message;
 }
 
-function pushCloud() {
-  const url = localStorage.getItem('sync_url');
-  if (!url) return;
-  fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(db) }).catch(() => {});
+const ADMIN_ACCESS_TOKEN = 'water_admin_access_token';
+const ADMIN_REFRESH_TOKEN = 'water_admin_refresh_token';
+const REMOTE_ORDER_STATUSES = {
+  new: 'جديد',
+  accepted: 'تم القبول',
+  preparing: 'قيد التجهيز',
+  delivered: 'تم التسليم',
+  cancelled: 'ملغي'
+};
+let remoteOrders = [];
+
+function showAdminApp() {
+  if (!dbLoaded) {
+    db = loadDb();
+    dbLoaded = true;
+  }
+  $('admin-login').style.display = 'none';
+  $('app-content').style.display = 'block';
+  $('logoutButton').classList.remove('hidden');
+  renderStats();
+  initMap();
+  renderCustomers();
+  renderCustomerSelect();
+  renderOrders();
 }
 
-async function pullCloud() {
-  const url = localStorage.getItem('sync_url');
-  if (!url) return alert('أدخل رابط المزامنة أولاً');
+async function adminBackendFetch(path, options) {
+  const request = options || {};
+  const token = request.token || sessionStorage.getItem(ADMIN_ACCESS_TOKEN);
+  if (!token) throw new Error('Administrator session is missing');
   try {
-    const r = await fetch(url);
-    const data = await r.json();
-    if (!Array.isArray(data.customers)) throw new Error('bad data');
+    return await window.waterBackendFetch(path, { ...request, token });
+  } catch (error) {
+    const refreshToken = sessionStorage.getItem(ADMIN_REFRESH_TOKEN);
+    if (!error.message.includes('(401)') || !refreshToken) throw error;
+    const session = await window.waterBackendFetch('/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      body: { refresh_token: refreshToken }
+    });
+    if (!session || !session.access_token || !session.refresh_token) throw new Error('Session refresh failed');
+    sessionStorage.setItem(ADMIN_ACCESS_TOKEN, session.access_token);
+    sessionStorage.setItem(ADMIN_REFRESH_TOKEN, session.refresh_token);
+    return window.waterBackendFetch(path, { ...request, token: session.access_token });
+  }
+}
+
+async function assertAdmin(token) {
+  const admins = token
+    ? await window.waterBackendFetch('/rest/v1/admin_users?select=user_id&limit=1', { token })
+    : await adminBackendFetch('/rest/v1/admin_users?select=user_id&limit=1');
+  if (!Array.isArray(admins) || !admins.length) throw new Error('This account is not an administrator');
+}
+
+async function initializeApp() {
+  const configured = window.waterBackendConfig && window.waterBackendConfig();
+  $('backendStatus').textContent = configured
+    ? 'إعداد Supabase موجود. تُحكم صلاحيات العرض والتعديل بسياسات قاعدة البيانات.'
+    : 'لم يُضف إعداد Supabase بعد؛ استقبال الطلبات متاح مؤقتاً عبر WhatsApp.';
+  if (!configured) {
+    $('loginStatus').textContent = 'أكمل إعداد Supabase قبل تسجيل دخول الإدارة.';
+    $('adminLoginForm').querySelector('button[type="submit"]').disabled = true;
+    return;
+  }
+  $('adminLoginForm').addEventListener('submit', loginAdmin);
+  const token = sessionStorage.getItem(ADMIN_ACCESS_TOKEN);
+  if (!token) return;
+  try {
+    await assertAdmin();
+    showAdminApp();
+    await loadRemoteOrders();
+  } catch (error) {
+    logoutAdmin();
+    $('loginStatus').textContent = 'انتهت الجلسة أو أن الحساب غير مصرح له بالإدارة. سجل الدخول مجدداً.';
+  }
+}
+
+async function loginAdmin(event) {
+  event.preventDefault();
+  const status = $('loginStatus');
+  const button = $('adminLoginForm').querySelector('button[type="submit"]');
+  const email = $('adminEmail').value.trim();
+  const password = $('adminPassword').value;
+  button.disabled = true;
+  status.textContent = 'جارٍ التحقق من الحساب...';
+  try {
+    const session = await window.waterBackendFetch('/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      body: { email, password }
+    });
+    if (!session || !session.access_token) throw new Error('Login failed');
+    await assertAdmin(session.access_token);
+    sessionStorage.setItem(ADMIN_ACCESS_TOKEN, session.access_token);
+    if (session.refresh_token) sessionStorage.setItem(ADMIN_REFRESH_TOKEN, session.refresh_token);
+    $('adminPassword').value = '';
+    showAdminApp();
+    await loadRemoteOrders();
+  } catch (error) {
+    $('adminPassword').value = '';
+    status.textContent = 'تعذر تسجيل الدخول. تحقق من الحساب وكلمة المرور، ومن إضافة الحساب إلى قائمة المديرين في Supabase.';
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function logoutAdmin() {
+  sessionStorage.removeItem(ADMIN_ACCESS_TOKEN);
+  sessionStorage.removeItem(ADMIN_REFRESH_TOKEN);
+  db = { customers: [], orders: [] };
+  dbLoaded = false;
+  remoteOrders = [];
+  $('remoteOrders').textContent = '';
+  $('app-content').style.display = 'none';
+  $('admin-login').style.display = 'block';
+  $('logoutButton').classList.add('hidden');
+  $('adminPassword').value = '';
+}
+
+async function loadRemoteOrders() {
+  const container = $('remoteOrders');
+  const token = sessionStorage.getItem(ADMIN_ACCESS_TOKEN);
+  if (!token) return;
+  container.textContent = 'جارٍ تحميل طلبات العملاء...';
+  try {
+    const result = await adminBackendFetch(
+      '/rest/v1/order_requests?select=id,customer_name,phone,city,district,street,building,liters,notes,status,created_at&order=created_at.desc&limit=100',
+      {}
+    );
+    if (!Array.isArray(result)) throw new Error('Unexpected order response');
+    remoteOrders = result;
+    renderRemoteOrders();
+  } catch (error) {
+    container.textContent = 'تعذر تحميل الطلبات. تحقق من اتصال الإنترنت وصلاحيات المدير في Supabase.';
+  }
+}
+
+function renderRemoteOrders() {
+  const container = $('remoteOrders');
+  if (!remoteOrders.length) {
+    container.textContent = 'لا توجد طلبات عملاء حالياً.';
+    return;
+  }
+  container.innerHTML = remoteOrders.map(order => {
+    const address = [order.city, order.district, order.street, order.building].filter(Boolean).join('، ');
+    const created = new Date(order.created_at);
+    const createdText = Number.isNaN(created.getTime()) ? '' : created.toLocaleString('ar-SA');
+    const options = Object.keys(REMOTE_ORDER_STATUSES).map(status =>
+      `<option value="${status}"${status === order.status ? ' selected' : ''}>${REMOTE_ORDER_STATUSES[status]}</option>`
+    ).join('');
+    return `<article class="item request-card" data-status="${esc(order.status)}">
+      <h3>${esc(order.customer_name)} - ${esc(order.phone)}</h3>
+      <p>${esc(address)}</p>
+      <p>الكمية: ${Number(order.liters) || 0} لتر${order.notes ? ` | ملاحظات: ${esc(order.notes)}` : ''}</p>
+      <p>الحالة: ${esc(REMOTE_ORDER_STATUSES[order.status] || 'غير معروفة')} ${createdText ? `| ${esc(createdText)}` : ''}</p>
+      <div class="row">
+        <select data-action="remote-status" aria-label="حالة الطلب">${options}</select>
+        <button data-action="save-remote-status" data-id="${esc(order.id)}">حفظ الحالة</button>
+      </div>
+    </article>`;
+  }).join('');
+}
+
+async function saveRemoteOrderStatus(id, status, button) {
+  if (!Object.prototype.hasOwnProperty.call(REMOTE_ORDER_STATUSES, status) ||
+      !remoteOrders.some(order => order.id === id)) return;
+  button.disabled = true;
+  try {
+    await adminBackendFetch(`/rest/v1/order_requests?id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: { status },
+      prefer: 'return=minimal'
+    });
+    const order = remoteOrders.find(item => item.id === id);
+    order.status = status;
+    renderRemoteOrders();
+    setSyncStatus('تم تحديث حالة طلب العميل.');
+  } catch (error) {
+    button.disabled = false;
+    setSyncStatus('تعذر تحديث حالة الطلب. تحقق من صلاحيات قاعدة البيانات والاتصال.');
+  }
+}
+
+function exportBackup() {
+  const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), data: db }, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `water-delivery-backup-${todayStr()}.json`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportRecoveryBackup() {
+  const raw = localStorage.getItem('water_db_recovery_backup');
+  if (!raw) return alert('لا توجد بيانات استرداد محفوظة.');
+  const blob = new Blob([raw], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `water-delivery-recovery-${todayStr()}.json`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function importBackup(event) {
+  const input = event.target;
+  const file = input.files && input.files[0];
+  if (!file) return;
+  try {
+    if (file.size > 5 * 1024 * 1024) throw new Error('Backup too large');
+    const backup = JSON.parse(await file.text());
+    const data = backup && backup.version === 1 ? backup.data : backup;
+    if (!validDatabase(data)) throw new Error('Invalid backup');
+    if (!confirm(`استعادة ${data.customers.length} عميل و${data.orders.length} طلب؟ سيتم استبدال البيانات الحالية.`)) return;
+    const previousDb = db;
     db = data;
-    localStorage.setItem(KEY, JSON.stringify(db));
-    alert('تم السحب من السحابة');
-    location.reload();
-  } catch (e) {
-    alert('تعذر السحب من السحابة. تحقق من الرابط والرمز.');
-  }
-}
-
-/* ===== الحماية بكلمة السر ===== */
-function checkAccess() {
-  // تعيين الرمز الافتراضي عند أول تشغيل إذا لم يكن موجوداً
-  if (!localStorage.getItem('app_pin')) {
-      localStorage.setItem('app_pin', 'nokia190749');
-  }
-
-  const savedPin = localStorage.getItem('app_pin');
-  const enteredPin = prompt("أدخل كلمة سر النظام:");
-  if (enteredPin === savedPin) {
-      $('app-content').style.display = 'block';
-  } else {
-      alert('كلمة سر خاطئة!');
-      location.reload();
-  }
-}
-
-function changePin() {
-    const oldPin = prompt("أدخل كلمة السر الحالية:");
-    if (oldPin === localStorage.getItem('app_pin')) {
-        const newPin = prompt("أدخل كلمة السر الجديدة:");
-        if (newPin) {
-            localStorage.setItem('app_pin', newPin);
-            alert('تم تغيير كلمة السر');
-        }
-    } else {
-        alert('كلمة السر الحالية خاطئة');
+    if (!persist()) {
+      db = previousDb;
+      return;
     }
+    renderCustomers();
+    renderCustomerSelect();
+    renderOrders();
+    renderDriver();
+    alert('تمت استعادة النسخة الاحتياطية.');
+  } catch (error) {
+    alert('تعذر استعادة الملف. تأكد أنه نسخة احتياطية صحيحة من التطبيق.');
+  } finally {
+    input.value = '';
+  }
+}
+
+function bindListActions() {
+  $('c_list').addEventListener('click', event => {
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+    if (button.dataset.action === 'edit-customer') editCustomer(button.dataset.id);
+    if (button.dataset.action === 'delete-customer') delCustomer(button.dataset.id);
+  });
+  $('o_list').addEventListener('click', event => {
+    const button = event.target.closest('button[data-action="delete-order"]');
+    if (button) delOrder(button.dataset.id);
+  });
+  $('d_list').addEventListener('click', event => {
+    const button = event.target.closest('button[data-action="set-order-status"]');
+    if (button) setStatus(button.dataset.id, button.dataset.status);
+  });
+  $('remoteOrders').addEventListener('click', event => {
+    const button = event.target.closest('button[data-action="save-remote-status"]');
+    if (!button) return;
+    const select = button.closest('.request-card').querySelector('select[data-action="remote-status"]');
+    saveRemoteOrderStatus(button.dataset.id, select.value, button);
+  });
+}
+
+bindListActions();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {
+      setSyncStatus('تعذر تفعيل وضع العمل دون اتصال؛ تحقق من استضافة HTTPS.');
+    });
+  });
 }
 </script>
 </body>

@@ -3,103 +3,159 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>طلب مياه - نظام توصيل</title>
+<meta name="theme-color" content="#1565a6">
+<title>طلب توصيل مياه</title>
 <style>
-  body { font-family: Tahoma, Arial, sans-serif; background: #f0f6fb; padding: 20px; }
-  main { max-width: 500px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-  h2 { color: #0d3d66; }
-  input, select { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; }
-  button { background: #1565a6; color: #fff; border: none; padding: 12px; width: 100%; border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 10px; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 18px; font-family: Tahoma, Arial, sans-serif; background: #f0f6fb; color: #1a2b3c; }
+  main { max-width: 560px; margin: 20px auto; padding: 22px; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+  h1 { margin-top: 0; color: #0d3d66; font-size: 23px; }
+  p { line-height: 1.7; }
+  label { display: block; margin-top: 12px; font-size: 14px; }
+  input, textarea { width: 100%; padding: 12px; margin-top: 6px; border: 1px solid #8aa9c4; border-radius: 7px; font: inherit; }
+  button, .button { display: inline-block; width: 100%; margin-top: 14px; padding: 12px; border: 0; border-radius: 8px; background: #1565a6; color: #fff; font: inherit; text-align: center; text-decoration: none; cursor: pointer; }
+  .whatsapp { background: #168d58; }
+  .hint { color: #555; font-size: 13px; }
+  #status { min-height: 24px; }
+  button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid #e0a100; outline-offset: 2px; }
 </style>
+<script src="./backend-config.js"></script>
 </head>
-<body onload="checkAccess()">
-<main id="app-content" style="display:none;">
-  <h2>طلب توصيل مياه</h2>
-  <p style="color:#555;">بإدارة: محمود بدران</p>
-  <label>رقم الجوال المسجل</label>
-  <input id="o_phone" type="tel" placeholder="05xxxxxxxx">
-  <button onclick="checkCustomer()">بحث عن بياناتي</button>
+<body>
+<main>
+  <h1>طلب توصيل مياه</h1>
+  <p>بإدارة الحاج محمود بدران</p>
+  <p class="hint">املأ بيانات التوصيل. لا يمكن للزوار الاطلاع على الطلبات أو بيانات العملاء.</p>
+  <form id="orderForm">
+    <label for="customerName">الاسم</label>
+    <input id="customerName" name="customerName" maxlength="120" autocomplete="name" required>
 
-  <div id="o_details" style="display:none; margin-top:20px;">
-    <p>أهلاً بك: <b id="u_name"></b></p>
-    <label>الكمية (لتر)</label>
-    <input id="o_liters" type="number" placeholder="مثال: 19">
-    <label>ملاحظات إضافية</label>
-    <input id="o_notes" placeholder="ملاحظات للسائق">
-    <button onclick="sendOrder()">إرسال الطلب للمكتب</button>
-  </div>
+    <label for="phone">رقم الجوال</label>
+    <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="05xxxxxxxx" required>
+
+    <label for="city">المدينة</label>
+    <input id="city" name="city" maxlength="100" autocomplete="address-level2" required>
+
+    <label for="district">الحي</label>
+    <input id="district" name="district" maxlength="120" autocomplete="address-level3" required>
+
+    <label for="street">الشارع</label>
+    <input id="street" name="street" maxlength="200" autocomplete="street-address" required>
+
+    <label for="building">رقم المنزل أو المبنى (اختياري)</label>
+    <input id="building" name="building" maxlength="100">
+
+    <label for="liters">الكمية باللتر</label>
+    <input id="liters" name="liters" type="number" min="1" max="5000" step="1" required>
+
+    <label for="notes">ملاحظات للسائق (اختياري)</label>
+    <textarea id="notes" name="notes" maxlength="500" rows="3"></textarea>
+
+    <button id="submitOrder" type="submit">إرسال الطلب</button>
+  </form>
+  <p id="status" role="status" aria-live="polite"></p>
+  <a id="whatsappFallback" class="button whatsapp" href="https://wa.me/966567596361" target="_blank" rel="noopener noreferrer">إرسال الطلب عبر WhatsApp</a>
+  <p class="hint"><a href="./index.html">العودة إلى نظام التوصيل</a></p>
 </main>
 <script>
-// نسخ دالة التحقق من الهاتف الموحدة
-function normPhone(p) {
-  p = p.replace(/\s+/g, '').replace(/-/g, '');
-  if (/^05\d{8}$/.test(p)) return '+966' + p.slice(1);
-  if (/^5\d{8}$/.test(p)) return '+966' + p;
-  if (/^\+9665\d{8}$/.test(p)) return p;
-  if (/^9665\d{8}$/.test(p)) return '+' + p;
+const BUSINESS_WHATSAPP = '966567596361';
+const form = document.getElementById('orderForm');
+const statusMessage = document.getElementById('status');
+const whatsappFallback = document.getElementById('whatsappFallback');
+const submitButton = document.getElementById('submitOrder');
+
+function normalizePhone(value) {
+  const phone = value.replace(/[\s()-]/g, '');
+  if (/^05\d{8}$/.test(phone)) return '+966' + phone.slice(1);
+  if (/^5\d{8}$/.test(phone)) return '+966' + phone;
+  if (/^\+9665\d{8}$/.test(phone)) return phone;
+  if (/^9665\d{8}$/.test(phone)) return '+' + phone;
   return null;
 }
 
-// دالة المزامنة للسحابة
-function pushCloud() {
-  const url = localStorage.getItem('sync_url');
-  const db = JSON.parse(localStorage.getItem('water_db_v1') || '{"customers":[],"orders":[]}');
-  if (!url) return;
-  fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(db) }).catch(() => {});
-}
-
-let foundCustomer = null;
-
-function checkCustomer() {
-  const p = normPhone(document.getElementById('o_phone').value);
-  if (!p) return alert('رقم الجوال غير صحيح');
-
-  const db = JSON.parse(localStorage.getItem('water_db_v1') || '{"customers":[],"orders":[]}');
-  foundCustomer = db.customers.find(x => x.phone === p);
-
-  if (foundCustomer) {
-    document.getElementById('u_name').textContent = foundCustomer.name;
-    document.getElementById('o_details').style.display = 'block';
-  } else alert('لم يتم العثور على عميل بهذا الرقم المسجل في المكتب.');
-}
-
-function sendOrder() {
-  const liters = document.getElementById('o_liters').value;
-  if (!liters) return alert('الرجاء تحديد الكمية');
-
-  let db = JSON.parse(localStorage.getItem('water_db_v1') || '{"customers":[],"orders":[]}');
-
-  // إضافة الطلب
-  const newOrder = {
-    id: Date.now().toString(36),
-    customerId: foundCustomer.id,
-    date: new Date().toISOString().slice(0, 10),
-    status: 'new',
-    reason: ''
+function getOrderData() {
+  const customerName = form.elements.customerName.value.trim();
+  const city = form.elements.city.value.trim();
+  const district = form.elements.district.value.trim();
+  const street = form.elements.street.value.trim();
+  if (!customerName || !city || !district || !street) throw new Error('أكمل الاسم والمدينة والحي والشارع.');
+  const phone = normalizePhone(form.elements.phone.value.trim());
+  const liters = Number(form.elements.liters.value);
+  if (!phone) throw new Error('أدخل رقم جوال سعودي صحيحاً.');
+  if (!Number.isInteger(liters) || liters < 1 || liters > 5000) throw new Error('أدخل كمية صحيحة من 1 إلى 5000 لتر.');
+  return {
+    customer_name: customerName,
+    phone,
+    city,
+    district,
+    street,
+    building: form.elements.building.value.trim(),
+    liters,
+    notes: form.elements.notes.value.trim()
   };
-
-  db.orders.push(newOrder);
-  localStorage.setItem('water_db_v1', JSON.stringify(db));
-
-  // مزامنة السحابة
-  pushCloud();
-
-  alert('تم إرسال طلبك للمكتب بنجاح!');
-  location.reload();
 }
 
-/* ===== الحماية بكلمة السر ===== */
-function checkAccess() {
-  const savedPin = localStorage.getItem('app_pin') || 'nokia190749';
+function updateWhatsAppLink(order) {
+  const message = [
+    'طلب توصيل مياه - الحاج محمود بدران',
+    `الاسم: ${order.customer_name}`,
+    `الجوال: ${order.phone}`,
+    `المدينة: ${order.city}`,
+    `الحي: ${order.district}`,
+    `العنوان: ${order.street}${order.building ? '، مبنى ' + order.building : ''}`,
+    `الكمية: ${order.liters} لتر`,
+    order.notes ? `ملاحظات: ${order.notes}` : ''
+  ].filter(Boolean).join('\n');
+  whatsappFallback.href = `https://wa.me/${BUSINESS_WHATSAPP}?text=${encodeURIComponent(message)}`;
+}
 
-  const enteredPin = prompt("أدخل كلمة سر النظام:");
-  if (enteredPin === savedPin) {
-      document.getElementById('app-content').style.display = 'block';
-  } else {
-      alert('كلمة سر خاطئة!');
-      location.reload();
+form.addEventListener('input', () => {
+  if (!form.checkValidity() || !normalizePhone(form.elements.phone.value.trim())) return;
+  if (![form.elements.customerName, form.elements.city, form.elements.district, form.elements.street]
+    .every(field => field.value.trim())) return;
+  const liters = Number(form.elements.liters.value);
+  if (!Number.isInteger(liters) || liters < 1 || liters > 5000) return;
+  updateWhatsAppLink(getOrderData());
+});
+
+form.addEventListener('submit', async event => {
+  event.preventDefault();
+  statusMessage.textContent = '';
+  let order;
+  try {
+    order = getOrderData();
+  } catch (error) {
+    statusMessage.textContent = error.message;
+    return;
   }
-}
+  updateWhatsAppLink(order);
+  const config = window.waterBackendConfig ? window.waterBackendConfig() : null;
+  if (!config) {
+    statusMessage.textContent = 'التسجيل الآمن لم يُفعّل بعد. أرسل بيانات الطلب عبر زر WhatsApp أدناه.';
+    whatsappFallback.focus();
+    return;
+  }
+
+  submitButton.disabled = true;
+  whatsappFallback.hidden = false;
+  submitButton.textContent = 'جارٍ إرسال الطلب...';
+  try {
+    await window.waterBackendFetch('/rest/v1/order_requests', {
+      method: 'POST',
+      body: order,
+      prefer: 'return=minimal'
+    });
+    statusMessage.textContent = 'وصل طلبك إلى المكتب بنجاح. سيتواصل معك الحاج محمود بدران للتأكيد.';
+    form.reset();
+    whatsappFallback.hidden = true;
+  } catch (error) {
+    statusMessage.textContent = 'تعذر تسجيل الطلب إلكترونياً. يمكنك إرساله مباشرة عبر WhatsApp.';
+    whatsappFallback.focus();
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = 'إرسال الطلب';
+  }
+});
 </script>
 </body>
 </html>
